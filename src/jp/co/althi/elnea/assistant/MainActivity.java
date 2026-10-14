@@ -570,6 +570,12 @@ public class MainActivity extends Activity {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, dp(4), 0, dp(8));
         card.setLayoutParams(lp);
+
+        // 冷启回读值强制写盘一次（ag3 判据：清 prefs 冷启后 res_state.xml 自动重建）
+        sp.edit()
+          .putBoolean(KEY_SWITCH_AUTO, switchAuto)
+          .putBoolean(KEY_SWITCH_DEEP, switchDeep)
+          .commit();
         return card;
     }
 
