@@ -165,13 +165,18 @@ public class MainActivity extends Activity {
         // ①-2 状态徽章：居中微晶浮雕胶囊（白底 + 1px 发丝描边 + 绿点 + 加粗文字）
         LinearLayout statusPill = new LinearLayout(this);
         statusPill.setOrientation(LinearLayout.HORIZONTAL);
-        statusPill.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        statusPill.setGravity(android.view.Gravity.CENTER);
         statusPill.setPadding(dp(14), dp(5), dp(14), dp(5));
         GradientDrawable pillBg = new GradientDrawable();
         pillBg.setColor(Color.parseColor("#FFFFFF"));
         pillBg.setStroke(1, Color.parseColor("#E5E5EA"));
         pillBg.setCornerRadius(dp(9999));
         statusPill.setBackground(pillBg);
+        LinearLayout.LayoutParams statusPillLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        statusPillLp.gravity = android.view.Gravity.CENTER_HORIZONTAL;
+        statusPillLp.setMargins(0, dp(4), 0, 0);
+        statusPill.setLayoutParams(statusPillLp);
 
         TextView dotStatus = new TextView(this);
         dotStatus.setText("\u25CF"); // ●
@@ -347,9 +352,10 @@ public class MainActivity extends Activity {
         });
     }
 
-    // 手动检查更新（关于弹窗内「检查更新」入口，反馈双字段明细）
+    // 手动检查更新（关于弹窗内「检查更新」入口，三态闭环反馈）
     private void manualCheckUpdate() {
         log("[更新] 正在检查...");
+        toast("正在检查云端最新版本...");
         exec.execute(new Runnable() {
             public void run() {
                 try {
@@ -361,16 +367,45 @@ public class MainActivity extends Activity {
                         public void run() {
                             if (remoteVer == null || remoteVer.length() == 0
                                 || remoteVer.equals(DEFAULT_RES_VERSION)) {
-                                log("[更新] 网络不可达，降级为已最新");
+                                log("[更新] 网络不可达");
                                 toast("检查更新失败，请检查网络");
-                            } else if (remoteVer.equals(APP_VERSION)) {
-                                log("[更新] 已是最新：助手 " + APP_VERSION + " / 汉化 " + resVer);
-                                showModal("已是最新版本",
-                                    "助手版本：" + APP_VERSION + "（最新）\n" +
-                                    "汉化数据：" + resVer + "（最新）",
-                                    "好", null, null);
+                                return;
+                            }
+                            final boolean appNew = !remoteVer.equals(APP_VERSION);
+                            final boolean resNew = (localRes == null || localRes.length() == 0)
+                                || !remoteVer.equals(localRes);
+                            if (appNew) {
+                                // 态1：助手 App 有新版
+                                showModal("🎉 发现助手新版本 " + remoteVer,
+                                    "当前安装：v1.0.0\n\n是否立即前往 GitHub 下载最新 APK？",
+                                    "稍后", "前往下载",
+                                    new Runnable() {
+                                        public void run() {
+                                            try {
+                                                Intent it = new Intent(Intent.ACTION_VIEW,
+                                                    Uri.parse("https://github.com/YG224586/ElneaAssistant/releases/latest"));
+                                                startActivity(it);
+                                            } catch (Exception e) {
+                                                log("[更新] 无法调起浏览器: " + e.getMessage());
+                                            }
+                                        }
+                                    });
+                            } else if (resNew) {
+                                // 态2：汉化资源包有新版，联动 downloadAndDeploy
+                                final String rv = remoteVer;
+                                showModal("✨ 发现汉化数据新版本 " + remoteVer,
+                                    "当前部署：" + resVer + "\n\n是否立即下载并自动覆盖部署？",
+                                    "稍后", "立即更新",
+                                    new Runnable() {
+                                        public void run() { downloadAndDeploy(rv); }
+                                    });
                             } else {
-                                showUpdateModal(remoteVer);
+                                // 态3：全部为最新
+                                showModal("✅ 当前已是最新版本",
+                                    "• 助手软件：v1.0.0 (最新)\n" +
+                                    "• 汉化数据：" + resVer + " (最新)\n" +
+                                    "• 维护规则：已同步最新",
+                                    "确定", null, null);
                             }
                         }
                     });
@@ -690,23 +725,11 @@ public class MainActivity extends Activity {
             "• 离线汉化数据包解耦与一键自动部署\n" +
             "• 独创 SSAID 指纹轮换破除维护锁\n" +
             "• 纯原生零第三方 SDK，本地安全执行\n\n" +
-            "开源仓库：\n" +
-            "github.com/YG224586/ElneaAssistant\n\n" +
+            "开源仓库：github.com/YG224586/ElneaAssistant\n\n" +
             "本工具仅供技术交流与学习研究，游戏版权归 althi Inc. 所有。",
-            "访问 GitHub", "检查更新",
+            "关闭", "🔍 检查更新",
             new Runnable() {
                 public void run() { manualCheckUpdate(); }
-            },
-            new Runnable() {
-                public void run() {
-                    try {
-                        Intent it = new Intent(Intent.ACTION_VIEW,
-                            Uri.parse("https://github.com/YG224586/ElneaAssistant"));
-                        startActivity(it);
-                    } catch (Exception e) {
-                        log("[关于] 无法调起浏览器: " + e.getMessage());
-                    }
-                }
             });
     }
 
