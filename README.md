@@ -19,14 +19,6 @@
 
 ---
 
-## 📱 运行截图 (Screenshots)
-
-| 主界面 (Main Screen) | 弹窗交互 (Apple Modal) |
-| :---: | :---: |
-| ![Main UI](docs/screenshot_main.png) | ![Modal Dialog](docs/screenshot_modal.png) |
-
----
-
 ## 🛠️ 项目架构 (Architecture)
 
 ```text
