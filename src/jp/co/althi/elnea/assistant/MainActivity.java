@@ -11,7 +11,10 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.widget.Toast;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -40,18 +43,21 @@ public class MainActivity extends Activity {
     private static final String RES_FILE_NAME = "elnea_zh_unitycache.zip";
     // 默认版本（若云端请求失败则退避为本地已装版本）
     private static final String DEFAULT_RES_VERSION = "v1.0.0";
-    // SharedPreferences 持久化：已部署标记 + 数据包版本
+    // SharedPreferences 持久化：已部署标记 + 数据包版本 + 开关记忆
     private static final String PREFS = "res_state";
     private static final String KEY_RES_VERSION = "res_version";
+    private static final String KEY_SWITCH_AUTO = "switch_auto_maint";
+    private static final String KEY_SWITCH_DEEP = "switch_deep_write";
 
     private TextView statusLineView;
     private TextView statusRoot;
+    private TextView cardASubView;
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
     private volatile boolean hasRoot = false;
     private boolean gameInstalled = false;
-    // Switch 持久开关状态：自动防维护拦截 / 深度写入
-    private boolean switchAuto = false;
-    private boolean switchDeep = false;
+    // Switch 持久开关状态：自动防维护拦截 / 深度写入（带本地偏好记忆）
+    private boolean switchAuto = true;
+    private boolean switchDeep = true;
 
     private LinearLayout btnFixMaint;
 
@@ -120,7 +126,25 @@ public class MainActivity extends Activity {
         title.setLayoutParams(ttlp);
         heroRow.addView(title);
 
-        // 右上角 32dp 微圆形关闭按钮 ✕（Apple 克制式）
+        // 右上角操作区：32dp 关于按钮 ⓘ + 32dp 关闭按钮 ✕（Apple 克制式）
+        LinearLayout heroRight = new LinearLayout(this);
+        heroRight.setOrientation(LinearLayout.HORIZONTAL);
+        heroRight.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+        TextView btnAbout = new TextView(this);
+        btnAbout.setText("\u24D8"); // ⓘ
+        btnAbout.setTextColor(Color.parseColor("#86868B"));
+        btnAbout.setTextSize(16);
+        btnAbout.setGravity(android.view.Gravity.CENTER);
+        btnAbout.setBackgroundResource(R.drawable.circle_close);
+        LinearLayout.LayoutParams aboutlp = new LinearLayout.LayoutParams(dp(32), dp(32));
+        aboutlp.setMargins(0, 0, dp(8), 0);
+        btnAbout.setLayoutParams(aboutlp);
+        btnAbout.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showAboutDialog(); }
+        });
+        heroRight.addView(btnAbout);
+
         TextView btnClose = new TextView(this);
         btnClose.setText("\u2715");
         btnClose.setTextColor(Color.parseColor("#86868B"));
@@ -132,7 +156,8 @@ public class MainActivity extends Activity {
         btnClose.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { finish(); }
         });
-        heroRow.addView(btnClose);
+        heroRight.addView(btnClose);
+        heroRow.addView(heroRight);
         root.addView(heroRow);
 
         TextView sub = new TextView(this);
@@ -148,9 +173,18 @@ public class MainActivity extends Activity {
         statusRoot.setPadding(0, 0, 0, dp(18));
         root.addView(statusRoot);
 
+        // 读取开关状态记忆
+        SharedPreferences spInit = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        switchAuto = spInit.getBoolean(KEY_SWITCH_AUTO, true);
+        switchDeep = spInit.getBoolean(KEY_SWITCH_DEEP, true);
+
         // ===== ② 卡片 A · 汉化部署（横向流：左图标 + 中文本 + 右Tag+Chevron）=====
+        String curVer = getResVersion();
+        String initialSub = (curVer != null && curVer.length() > 0)
+            ? ("已部署最新汉化 (" + curVer + ") · 点击校验或重新覆盖")
+            : getString(R.string.card_a_sub);
         root.addView(makeCard(getString(R.string.card_a_title),
-            getString(R.string.card_a_sub), getString(R.string.tag_free),
+            initialSub, getString(R.string.tag_free),
             R.drawable.icon_bg_blue, R.drawable.ic_download,
             new Runnable() { public void run() { confirmDeploy(); } }));
         // ===== ③ 卡片 B · 破除维护锁 =====
@@ -180,6 +214,19 @@ public class MainActivity extends Activity {
 
         // ===== ④c 设置开关（iOS Inset Grouped 单卡：自动防维护拦截 / 深度写入）=====
         root.addView(makeSwitchGroup());
+
+        // ===== 底部关于入口（Apple 极简风格）=====
+        TextView footerAbout = new TextView(this);
+        footerAbout.setText("艾尔尼亚·王国助手 v1.0.0 · 关于与开源许可");
+        footerAbout.setTextColor(Color.parseColor("#86868B"));
+        footerAbout.setTextSize(13);
+        footerAbout.setGravity(android.view.Gravity.CENTER);
+        footerAbout.setPadding(0, dp(14), 0, dp(4));
+        footerAbout.setClickable(true);
+        footerAbout.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showAboutDialog(); }
+        });
+        root.addView(footerAbout);
 
         // ===== ⑤ 单行状态胶囊（36dp，微晶绿灯，替代黑曜石终端）=====
         LinearLayout statusBar = new LinearLayout(this);
@@ -315,6 +362,9 @@ public class MainActivity extends Activity {
         t2.setTextSize(13);
         t2.setPadding(0, dp(3), 0, 0);
         mid.addView(t2);
+        if (titleText.equals(getString(R.string.card_a_title))) {
+            cardASubView = t2;
+        }
         card.addView(mid);
 
         // 右侧：Tag 微胶囊（9999dp 圆角灰底）+ 浅灰箭头 ›
@@ -354,15 +404,21 @@ public class MainActivity extends Activity {
         return dp(24);
     }
 
-    // Apple iOS 风格 Switch 开关卡：左文本 + 右开关
+    // Apple iOS 风格 Switch 开关卡：左文本 + 右手绘高精度 iOS Switch
     private LinearLayout makeSwitchGroup() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackgroundResource(R.drawable.card_utility);
 
+        final SharedPreferences sp = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+
         card.addView(makeSwitchRow(getString(R.string.switch_auto_title),
-            getString(R.string.switch_auto_sub), false, new Runnable() {
-                public void run() { switchAuto = !switchAuto; }
+            getString(R.string.switch_auto_sub), switchAuto, new OnToggleListener() {
+                public void onToggle(boolean checked) {
+                    switchAuto = checked;
+                    sp.edit().putBoolean(KEY_SWITCH_AUTO, checked).apply();
+                    log("[设置] 自动防维护拦截: " + (checked ? "开启" : "关闭"));
+                }
             }));
 
         // 1px 发丝分割线
@@ -375,8 +431,12 @@ public class MainActivity extends Activity {
         card.addView(divider);
 
         card.addView(makeSwitchRow(getString(R.string.switch_deep_title),
-            getString(R.string.switch_deep_sub), false, new Runnable() {
-                public void run() { switchDeep = !switchDeep; }
+            getString(R.string.switch_deep_sub), switchDeep, new OnToggleListener() {
+                public void onToggle(boolean checked) {
+                    switchDeep = checked;
+                    sp.edit().putBoolean(KEY_SWITCH_DEEP, checked).apply();
+                    log("[设置] 深度直接写入: " + (checked ? "开启" : "关闭"));
+                }
             }));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -386,9 +446,9 @@ public class MainActivity extends Activity {
         return card;
     }
 
-    private LinearLayout makeSwitchRow(final String titleText, final String subtitle, boolean checked,
-                                       final Runnable onToggle) {
-        LinearLayout row = new LinearLayout(this);
+    private LinearLayout makeSwitchRow(final String titleText, final String subtitle, final boolean checked,
+                                       final OnToggleListener listener) {
+        final LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(android.view.Gravity.CENTER_VERTICAL);
         row.setPadding(dp(16), dp(12), dp(16), dp(12));
@@ -414,26 +474,98 @@ public class MainActivity extends Activity {
         mid.addView(t2);
         row.addView(mid);
 
-        // 右侧开关：自绘 iOS Switch（蓝底圆钮 / 灰底圆钮）
-        final android.widget.Switch sw = new android.widget.Switch(this);
-        sw.setChecked(checked);
-        sw.setTextOn(""); sw.setTextOff("");
-        sw.setShowText(false);
-        try {
-            sw.setThumbTintList(getResources().getColorStateList(R.color.switch_thumb));
-            sw.setTrackTintList(getResources().getColorStateList(R.color.switch_track));
-        } catch (Throwable t) { /* 低版本忽略 */ }
-        LinearLayout.LayoutParams swlp = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        sw.setLayoutParams(swlp);
-        sw.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(android.widget.CompoundButton b, boolean isChecked) {
-                if (onToggle != null) onToggle.run();
+        // 右侧开关：纯正手绘 Apple iOS UISwitch（51×31dp 椭圆跑道 + 27dp 纯白阴影圆钮）
+        final View iosSwitch = makeIosSwitch(checked, listener);
+        row.addView(iosSwitch);
+
+        // 点击整行也能触发开关平滑切换
+        row.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                iosSwitch.performClick();
             }
         });
-        row.addView(sw);
 
         return row;
+    }
+
+    private View makeIosSwitch(final boolean initialChecked, final OnToggleListener listener) {
+        final android.widget.FrameLayout container = new android.widget.FrameLayout(this);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(51), dp(31));
+        container.setLayoutParams(clp);
+
+        final GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(16));
+        final int colorOn = Color.parseColor("#34C759");   // 经典 Apple iOS 翡翠绿
+        final int colorOff = Color.parseColor("#E9E9EA");  // Apple 浅灰底跑道
+        bg.setColor(initialChecked ? colorOn : colorOff);
+        container.setBackground(bg);
+
+        final View thumb = new View(this);
+        GradientDrawable thumbDrawable = new GradientDrawable();
+        thumbDrawable.setShape(GradientDrawable.OVAL);
+        thumbDrawable.setColor(Color.WHITE);
+        thumb.setBackground(thumbDrawable);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            thumb.setElevation(dp(2));
+        }
+
+        android.widget.FrameLayout.LayoutParams tlp =
+            new android.widget.FrameLayout.LayoutParams(dp(27), dp(27));
+        tlp.gravity = android.view.Gravity.CENTER_VERTICAL | android.view.Gravity.LEFT;
+        tlp.leftMargin = dp(2);
+        thumb.setLayoutParams(tlp);
+        thumb.setTranslationX(initialChecked ? dp(20) : 0);
+        container.addView(thumb);
+
+        final boolean[] state = new boolean[]{ initialChecked };
+
+        container.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                state[0] = !state[0];
+                boolean now = state[0];
+                bg.setColor(now ? colorOn : colorOff);
+                thumb.animate()
+                    .translationX(now ? dp(20) : 0)
+                    .setDuration(200)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                    .start();
+                if (listener != null) listener.onToggle(now);
+            }
+        });
+
+        return container;
+    }
+
+    interface OnToggleListener {
+        void onToggle(boolean checked);
+    }
+
+    // ===== 关于对话框（Apple iOS 风格）=====
+    private void showAboutDialog() {
+        showModal("关于 艾尔尼亚·王国助手",
+            "版本：v1.0.0 (Release 20261015)\n" +
+            "设计规范：Apple Design System\n" +
+            "汉化支持：汉化小分队\n\n" +
+            "【核心能力】\n" +
+            "• 离线汉化数据包解耦与一键自动部署\n" +
+            "• 独创 SSAID 指纹轮换破除维护锁\n" +
+            "• 纯原生零第三方 SDK，本地安全执行\n\n" +
+            "开源仓库：\n" +
+            "github.com/YG224586/ElneaAssistant\n\n" +
+            "本工具仅供技术交流与学习研究，游戏版权归 althi Inc. 所有。",
+            "关闭", "访问 GitHub",
+            new Runnable() {
+                public void run() {
+                    try {
+                        Intent it = new Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://github.com/YG224586/ElneaAssistant"));
+                        startActivity(it);
+                    } catch (Exception e) {
+                        log("[关于] 无法调起浏览器: " + e.getMessage());
+                    }
+                }
+            });
     }
 
     private void setButtonEnabled(final LinearLayout card, final boolean enabled) {
