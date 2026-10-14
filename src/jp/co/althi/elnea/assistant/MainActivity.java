@@ -109,52 +109,93 @@ public class MainActivity extends Activity {
         // 全局流体布局过渡：内容收展/日志刷新/状态改变自动补间
         root.setLayoutTransition(new android.animation.LayoutTransition());
 
-        // ===== ① Hero（皇家居中：徽标 + 居中标题 + 居中状态胶囊）=====
+        // ===== ① Hero（王室殿堂级居中：56dp 微晶盾徽 + 居中标题 + 微晶浮雕状态胶囊）=====
         LinearLayout heroCenter = new LinearLayout(this);
         heroCenter.setOrientation(LinearLayout.VERTICAL);
         heroCenter.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        LinearLayout.LayoutParams heroLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        heroLp.setMargins(0, 0, 0, dp(20));
+        heroCenter.setLayoutParams(heroLp);
 
-        TextView heroBadge = new TextView(this);
-        heroBadge.setText("\u269C"); // ⚜ 皇家鸢尾花徽标
-        heroBadge.setTextColor(Color.parseColor("#B8860B")); // 皇家金
-        heroBadge.setTextSize(34);
-        heroBadge.setGravity(android.view.Gravity.CENTER);
-        heroCenter.addView(heroBadge);
+        // ①-1 王室 App 徽标：56×56dp 圆角微晶底座 + 纯白王冠图标
+        LinearLayout badgeBox = new LinearLayout(this);
+        badgeBox.setGravity(android.view.Gravity.CENTER);
+        LinearLayout.LayoutParams badgeBoxLp = new LinearLayout.LayoutParams(dp(56), dp(56));
+        badgeBox.setLayoutParams(badgeBoxLp);
+        // 深空午夜蓝 → 皇家紫渐变圆角底座（16dp）
+        GradientDrawable badgeBg = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[]{ Color.parseColor("#1C1C1E"), Color.parseColor("#4A3A8A") });
+        badgeBg.setCornerRadius(dp(16));
+        badgeBox.setBackground(badgeBg);
+        badgeBox.setElevation(dp(3));
+        TextView badgeIcon = new TextView(this);
+        badgeIcon.setText("\uD83C\uDFF0"); // 🏰 城堡王冠
+        badgeIcon.setTextSize(26);
+        badgeIcon.setGravity(android.view.Gravity.CENTER);
+        badgeBox.addView(badgeIcon);
+        heroCenter.addView(badgeBox);
 
         TextView title = new TextView(this);
         title.setText(getString(R.string.app_full_name));
         title.setTextColor(Color.parseColor("#1D1D1F"));
-        title.setTextSize(30);
+        title.setTextSize(28);
         title.setTypeface(null, Typeface.BOLD);
-        title.setLetterSpacing(0.02f);
+        title.setLetterSpacing(-0.01f);
         title.setGravity(android.view.Gravity.CENTER);
         title.setMaxLines(1);
         LinearLayout.LayoutParams ttlp = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        ttlp.setMargins(0, dp(6), 0, 0);
+        ttlp.setMargins(0, dp(10), 0, dp(4));
         title.setLayoutParams(ttlp);
         heroCenter.addView(title);
-        root.addView(heroCenter);
 
         TextView sub = new TextView(this);
         sub.setText(getString(R.string.app_slogan));
         sub.setTextColor(Color.parseColor("#86868B"));
-        sub.setTextSize(14);
+        sub.setTextSize(13);
+        sub.setLetterSpacing(0.02f);
         sub.setGravity(android.view.Gravity.CENTER);
-        sub.setPadding(0, dp(4), 0, dp(4));
-        root.addView(sub);
+        sub.setPadding(0, 0, 0, dp(8));
+        heroCenter.addView(sub);
 
+        // ①-2 状态徽章：居中微晶浮雕胶囊（白底 + 1px 发丝描边 + 绿点 + 加粗文字）
+        LinearLayout statusPill = new LinearLayout(this);
+        statusPill.setOrientation(LinearLayout.HORIZONTAL);
+        statusPill.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        statusPill.setPadding(dp(14), dp(5), dp(14), dp(5));
+        GradientDrawable pillBg = new GradientDrawable();
+        pillBg.setColor(Color.parseColor("#FFFFFF"));
+        pillBg.setStroke(1, Color.parseColor("#E5E5EA"));
+        pillBg.setCornerRadius(dp(9999));
+        statusPill.setBackground(pillBg);
+
+        TextView dotStatus = new TextView(this);
+        dotStatus.setText("\u25CF"); // ●
+        dotStatus.setTextColor(Color.parseColor("#34C759"));
+        dotStatus.setTextSize(10);
+        statusPill.addView(dotStatus);
         statusRoot = new TextView(this);
-        statusRoot.setTextColor(Color.parseColor("#007AFF"));
-        statusRoot.setTextSize(13);
-        statusRoot.setGravity(android.view.Gravity.CENTER);
-        statusRoot.setPadding(0, dp(4), 0, dp(18));
-        root.addView(statusRoot);
+        statusRoot.setTextColor(Color.parseColor("#1D1D1F"));
+        statusRoot.setTextSize(12);
+        statusRoot.setTypeface(null, Typeface.BOLD);
+        statusRoot.setPadding(dp(5), 0, 0, 0);
+        statusPill.addView(statusRoot);
+        heroCenter.addView(statusPill);
+
+        root.addView(heroCenter);
 
         // 读取开关状态记忆
         SharedPreferences spInit = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         switchAuto = spInit.getBoolean(KEY_SWITCH_AUTO, true);
         switchDeep = spInit.getBoolean(KEY_SWITCH_DEEP, true);
+
+        // 冷启强制回读写盘一次（修复：首次冷启 shared_prefs 目录空、res_state.xml 缺失）
+        spInit.edit()
+            .putBoolean(KEY_SWITCH_AUTO, switchAuto)
+            .putBoolean(KEY_SWITCH_DEEP, switchDeep)
+            .commit();
 
         // ===== ② 卡片 A · 汉化部署（横向流：左图标 + 中文本 + 右Tag+Chevron）=====
         String curVer = getResVersion();
