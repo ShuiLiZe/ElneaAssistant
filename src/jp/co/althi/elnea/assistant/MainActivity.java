@@ -109,68 +109,46 @@ public class MainActivity extends Activity {
         // 全局流体布局过渡：内容收展/日志刷新/状态改变自动补间
         root.setLayoutTransition(new android.animation.LayoutTransition());
 
-        // ===== ① Hero（Apple tight 标题 + 副标 + 右上角退出）=====
-        LinearLayout heroRow = new LinearLayout(this);
-        heroRow.setOrientation(LinearLayout.HORIZONTAL);
-        heroRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        // ===== ① Hero（皇家居中：徽标 + 居中标题 + 居中状态胶囊）=====
+        LinearLayout heroCenter = new LinearLayout(this);
+        heroCenter.setOrientation(LinearLayout.VERTICAL);
+        heroCenter.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+
+        TextView heroBadge = new TextView(this);
+        heroBadge.setText("\u269C"); // ⚜ 皇家鸢尾花徽标
+        heroBadge.setTextColor(Color.parseColor("#B8860B")); // 皇家金
+        heroBadge.setTextSize(34);
+        heroBadge.setGravity(android.view.Gravity.CENTER);
+        heroCenter.addView(heroBadge);
 
         TextView title = new TextView(this);
         title.setText(getString(R.string.app_full_name));
         title.setTextColor(Color.parseColor("#1D1D1F"));
-        title.setTextSize(28);
+        title.setTextSize(30);
         title.setTypeface(null, Typeface.BOLD);
-        title.setLetterSpacing(-0.02f);
+        title.setLetterSpacing(0.02f);
+        title.setGravity(android.view.Gravity.CENTER);
         title.setMaxLines(1);
-        LinearLayout.LayoutParams ttlp = new LinearLayout.LayoutParams(0,
-            LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        LinearLayout.LayoutParams ttlp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        ttlp.setMargins(0, dp(6), 0, 0);
         title.setLayoutParams(ttlp);
-        heroRow.addView(title);
-
-        // 右上角操作区：32dp 关于按钮 ⓘ + 32dp 关闭按钮 ✕（Apple 克制式）
-        LinearLayout heroRight = new LinearLayout(this);
-        heroRight.setOrientation(LinearLayout.HORIZONTAL);
-        heroRight.setGravity(android.view.Gravity.CENTER_VERTICAL);
-
-        TextView btnAbout = new TextView(this);
-        btnAbout.setText("\u24D8"); // ⓘ
-        btnAbout.setTextColor(Color.parseColor("#86868B"));
-        btnAbout.setTextSize(16);
-        btnAbout.setGravity(android.view.Gravity.CENTER);
-        btnAbout.setBackgroundResource(R.drawable.circle_close);
-        LinearLayout.LayoutParams aboutlp = new LinearLayout.LayoutParams(dp(32), dp(32));
-        aboutlp.setMargins(0, 0, dp(8), 0);
-        btnAbout.setLayoutParams(aboutlp);
-        btnAbout.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { showAboutDialog(); }
-        });
-        heroRight.addView(btnAbout);
-
-        TextView btnClose = new TextView(this);
-        btnClose.setText("\u2715");
-        btnClose.setTextColor(Color.parseColor("#86868B"));
-        btnClose.setTextSize(14);
-        btnClose.setGravity(android.view.Gravity.CENTER);
-        btnClose.setBackgroundResource(R.drawable.circle_close);
-        LinearLayout.LayoutParams closelp = new LinearLayout.LayoutParams(dp(32), dp(32));
-        btnClose.setLayoutParams(closelp);
-        btnClose.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { finish(); }
-        });
-        heroRight.addView(btnClose);
-        heroRow.addView(heroRight);
-        root.addView(heroRow);
+        heroCenter.addView(title);
+        root.addView(heroCenter);
 
         TextView sub = new TextView(this);
         sub.setText(getString(R.string.app_slogan));
         sub.setTextColor(Color.parseColor("#86868B"));
         sub.setTextSize(14);
+        sub.setGravity(android.view.Gravity.CENTER);
         sub.setPadding(0, dp(4), 0, dp(4));
         root.addView(sub);
 
         statusRoot = new TextView(this);
         statusRoot.setTextColor(Color.parseColor("#007AFF"));
         statusRoot.setTextSize(13);
-        statusRoot.setPadding(0, 0, 0, dp(18));
+        statusRoot.setGravity(android.view.Gravity.CENTER);
+        statusRoot.setPadding(0, dp(4), 0, dp(18));
         root.addView(statusRoot);
 
         // 读取开关状态记忆
@@ -272,7 +250,36 @@ public class MainActivity extends Activity {
             .start();
 
         setButtonEnabled(btnFixMaint, false);
-        exec.execute(new Runnable() { public void run() { checkRoot(); } });
+        exec.execute(new Runnable() { public void run() {
+            checkRoot();
+            checkForUpdate();   // 启动静默云端版本自检（发现新资源动态点亮卡片A）
+        }});
+    }
+
+    // 启动静默自检：比对云端最新版本与本地已部署版本，发现新资源时更新卡片A副标
+    private void checkForUpdate() {
+        try {
+            final String remoteVer = fetchLatestVersion();
+            final String localVer = getResVersion();
+            if (remoteVer != null && remoteVer.length() > 0
+                && !remoteVer.equals(DEFAULT_RES_VERSION)) {
+                if (localVer == null || localVer.length() == 0) {
+                    setCardASub("检测到可用汉化数据 " + remoteVer + " · 点击一键部署");
+                } else if (!remoteVer.equals(localVer)) {
+                    setCardASub("发现新版本汉化 " + remoteVer + "（当前 " + localVer + "）· 点击更新");
+                } else {
+                    setCardASub("已是最新汉化 " + remoteVer + " · 点击校验或重新覆盖");
+                }
+            }
+        } catch (Exception ignore) { /* 静默失败，不打扰 */ }
+    }
+
+    private void setCardASub(final String text) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                if (cardASubView != null) cardASubView.setText(text);
+            }
+        });
     }
 
     // iOS 标志性 50dp 全宽纯蓝加粗启动条
@@ -416,7 +423,7 @@ public class MainActivity extends Activity {
             getString(R.string.switch_auto_sub), switchAuto, new OnToggleListener() {
                 public void onToggle(boolean checked) {
                     switchAuto = checked;
-                    sp.edit().putBoolean(KEY_SWITCH_AUTO, checked).apply();
+                    sp.edit().putBoolean(KEY_SWITCH_AUTO, checked).commit();
                     log("[设置] 自动防维护拦截: " + (checked ? "开启" : "关闭"));
                 }
             }));
@@ -434,7 +441,7 @@ public class MainActivity extends Activity {
             getString(R.string.switch_deep_sub), switchDeep, new OnToggleListener() {
                 public void onToggle(boolean checked) {
                     switchDeep = checked;
-                    sp.edit().putBoolean(KEY_SWITCH_DEEP, checked).apply();
+                    sp.edit().putBoolean(KEY_SWITCH_DEEP, checked).commit();
                     log("[设置] 深度直接写入: " + (checked ? "开启" : "关闭"));
                 }
             }));
