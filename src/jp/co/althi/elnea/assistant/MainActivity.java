@@ -43,6 +43,8 @@ public class MainActivity extends Activity {
     private static final String RES_FILE_NAME = "elnea_zh_unitycache.zip";
     // 默认版本（若云端请求失败则退避为本地已装版本）
     private static final String DEFAULT_RES_VERSION = "v1.0.0";
+    // 当前 App 软件版本号（与 AndroidManifest versionName 保持一致）
+    private static final String APP_VERSION = "v1.0.0";
     // SharedPreferences 持久化：已部署标记 + 数据包版本 + 开关记忆
     private static final String PREFS = "res_state";
     private static final String KEY_RES_VERSION = "res_version";
@@ -247,6 +249,19 @@ public class MainActivity extends Activity {
         });
         root.addView(footerAbout);
 
+        // ===== 底部「检查更新」入口（手动触发双通道自检）=====
+        TextView footerUpdate = new TextView(this);
+        footerUpdate.setText("🔍 检查更新");
+        footerUpdate.setTextColor(Color.parseColor("#0066CC"));
+        footerUpdate.setTextSize(13);
+        footerUpdate.setGravity(android.view.Gravity.CENTER);
+        footerUpdate.setPadding(0, dp(2), 0, dp(14));
+        footerUpdate.setClickable(true);
+        footerUpdate.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { manualCheckUpdate(); }
+        });
+        root.addView(footerUpdate);
+
         // ===== ⑤ 单行状态胶囊（36dp，微晶绿灯，替代黑曜石终端）=====
         LinearLayout statusBar = new LinearLayout(this);
         statusBar.setOrientation(LinearLayout.HORIZONTAL);
@@ -294,7 +309,71 @@ public class MainActivity extends Activity {
         exec.execute(new Runnable() { public void run() {
             checkRoot();
             checkForUpdate();   // 启动静默云端版本自检（发现新资源动态点亮卡片A）
+            checkAppUpdate();   // 启动静默软件版本自检（发现新版弹提示）
         }});
+    }
+
+    // 软件版本自检：比对远端 tag_name 与本地 APP_VERSION，发现新版弹 Apple Modal
+    private void checkAppUpdate() {
+        try {
+            final String remoteVer = fetchLatestVersion();
+            if (remoteVer == null || remoteVer.length() == 0
+                || remoteVer.equals(DEFAULT_RES_VERSION)) return;
+            if (!remoteVer.equals(APP_VERSION)) {
+                showUpdateModal(remoteVer);
+            }
+        } catch (Exception ignore) { /* 静默失败 */ }
+    }
+
+    // 发现新版 App 的 Apple 标准 Modal（一键跳转下载最新 APK）
+    private void showUpdateModal(final String newVer) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                showModal("发现助手新版本 " + newVer,
+                    "当前版本 " + APP_VERSION + "\nRelease 已发布更新，建议升级以获得最新汉化与修复。",
+                    "稍后再说", "去下载",
+                    new Runnable() {
+                        public void run() {
+                            try {
+                                Intent it = new Intent(Intent.ACTION_VIEW,
+                                    Uri.parse("https://github.com/YG224586/ElneaAssistant/releases/latest"));
+                                startActivity(it);
+                            } catch (Exception e) {
+                                log("[更新] 无法调起浏览器: " + e.getMessage());
+                            }
+                        }
+                    });
+            }
+        });
+    }
+
+    // 手动检查更新（关于弹窗内「检查更新」入口）
+    private void manualCheckUpdate() {
+        log("[更新] 正在检查...");
+        exec.execute(new Runnable() {
+            public void run() {
+                try {
+                    final String remoteVer = fetchLatestVersion();
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            if (remoteVer == null || remoteVer.length() == 0
+                                || remoteVer.equals(DEFAULT_RES_VERSION)) {
+                                log("[更新] 当前已是最新版本 " + APP_VERSION);
+                                toast("当前已是最新版本 " + APP_VERSION);
+                            } else if (remoteVer.equals(APP_VERSION)) {
+                                log("[更新] 当前已是最新版本 " + APP_VERSION);
+                                toast("当前已是最新版本 " + APP_VERSION);
+                            } else {
+                                showUpdateModal(remoteVer);
+                            }
+                        }
+                    });
+                } catch (Exception e) {
+                    log("[更新] 检查失败: " + e.getMessage());
+                    toast("检查更新失败，请检查网络");
+                }
+            }
+        });
     }
 
     // 启动静默自检：比对云端最新版本与本地已部署版本，发现新资源时更新卡片A副标
@@ -614,6 +693,12 @@ public class MainActivity extends Activity {
                     }
                 }
             });
+    }
+
+    // 关于弹窗下方「检查更新」入口（独立灰字链接，点击触发 manualCheckUpdate）
+    private void addUpdateCheckEntry() {
+        // 由底部关于链接点击后，在 About Modal 之外补充一个手动检测入口已足够；
+        // 这里保留独立方法供后续 UI 扩展（底部第二行灰字「检查更新」）。
     }
 
     private void setButtonEnabled(final LinearLayout card, final boolean enabled) {
