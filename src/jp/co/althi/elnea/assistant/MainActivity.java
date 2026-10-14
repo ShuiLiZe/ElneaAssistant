@@ -347,22 +347,28 @@ public class MainActivity extends Activity {
         });
     }
 
-    // 手动检查更新（关于弹窗内「检查更新」入口）
+    // 手动检查更新（关于弹窗内「检查更新」入口，反馈双字段明细）
     private void manualCheckUpdate() {
         log("[更新] 正在检查...");
         exec.execute(new Runnable() {
             public void run() {
                 try {
                     final String remoteVer = fetchLatestVersion();
+                    final String localRes = getResVersion();
+                    final String resVer = (localRes == null || localRes.length() == 0)
+                        ? "未部署" : localRes;
                     runOnUiThread(new Runnable() {
                         public void run() {
                             if (remoteVer == null || remoteVer.length() == 0
                                 || remoteVer.equals(DEFAULT_RES_VERSION)) {
-                                log("[更新] 当前已是最新版本 " + APP_VERSION);
-                                toast("当前已是最新版本 " + APP_VERSION);
+                                log("[更新] 网络不可达，降级为已最新");
+                                toast("检查更新失败，请检查网络");
                             } else if (remoteVer.equals(APP_VERSION)) {
-                                log("[更新] 当前已是最新版本 " + APP_VERSION);
-                                toast("当前已是最新版本 " + APP_VERSION);
+                                log("[更新] 已是最新：助手 " + APP_VERSION + " / 汉化 " + resVer);
+                                showModal("已是最新版本",
+                                    "助手版本：" + APP_VERSION + "（最新）\n" +
+                                    "汉化数据：" + resVer + "（最新）",
+                                    "好", null, null);
                             } else {
                                 showUpdateModal(remoteVer);
                             }
@@ -687,7 +693,10 @@ public class MainActivity extends Activity {
             "开源仓库：\n" +
             "github.com/YG224586/ElneaAssistant\n\n" +
             "本工具仅供技术交流与学习研究，游戏版权归 althi Inc. 所有。",
-            "关闭", "访问 GitHub",
+            "访问 GitHub", "检查更新",
+            new Runnable() {
+                public void run() { manualCheckUpdate(); }
+            },
             new Runnable() {
                 public void run() {
                     try {
@@ -720,6 +729,12 @@ public class MainActivity extends Activity {
     // 270dp 黄金宽度 + 14dp 圆角纯正底色 + 居中加粗标题 + 1px 发丝边框 + 44dp 标准高度分栏按钮
     private void showModal(String title, String body, String cancelText, String okText,
                            final Runnable onOk) {
+        showModal(title, body, cancelText, okText, onOk, null);
+    }
+
+    // 带取消动作的弹窗（取消按钮可挂 Runnable，如「访问仓库」跳转）
+    private void showModal(String title, String body, String cancelText, String okText,
+                           final Runnable onOk, final Runnable onCancel) {
         runOnUiThread(new Runnable() {
             public void run() {
                 final android.app.Dialog dlg = new android.app.Dialog(MainActivity.this);
@@ -780,7 +795,10 @@ public class MainActivity extends Activity {
                 btnCancel.setLayoutParams(bclp);
                 btnCancel.setClickable(true);
                 btnCancel.setOnClickListener(new View.OnClickListener() {
-                    public void onClick(View v) { dlg.dismiss(); }
+                    public void onClick(View v) {
+                        dlg.dismiss();
+                        if (onCancel != null) onCancel.run();
+                    }
                 });
                 btns.addView(btnCancel);
 
