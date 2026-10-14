@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 烈焰琥珀渐变（FF9F0A → FF375F → FF453A） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <corners android:radius="14dp"/>
+    <gradient
+        android:startColor="#FF9F0A"
+        android:centerColor="#FF375F"
+        android:endColor="#FF453A"
+        android:angle="315"/>
+</shape>

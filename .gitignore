@@ -1,0 +1,13 @@
+# Build artifacts
+bin/
+*.apk
+*.dex
+*.class
+*.zip
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+*.iml
+.idea/
+.vscode/

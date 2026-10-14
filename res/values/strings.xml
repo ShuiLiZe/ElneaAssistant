@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 应用名 -->
+    <string name="app_name">王国助手</string>
+    <string name="app_full_name">艾尔尼亚·王国助手</string>
+    <string name="app_slogan">一键汉化 · 破除维护 · 离线全量</string>
+    <string name="status_idle">就绪 · 等待操作</string>
+
+    <!-- 顶部状态胶囊 -->
+    <string name="pill_root_ok">Root·已授权</string>
+    <string name="pill_root_no">Root·未授权</string>
+    <string name="pill_game_ok">游戏·已安装 %1$s</string>
+    <string name="pill_game_no">游戏·未安装</string>
+
+    <!-- 羊皮纸状态面板 -->
+    <string name="board_fingerprint">设备指纹</string>
+    <string name="board_fp_ok">白名单·可进服</string>
+    <string name="board_fp_locked">维护中·待破锁</string>
+    <string name="board_offline">离线分包</string>
+    <string name="board_offline_ok">%1$d/%2$d 已就绪</string>
+    <string name="board_offline_miss">缺 %1$d 包</string>
+    <string name="board_map">汉化地图</string>
+    <string name="board_map_ok">fixed6 定稿版</string>
+
+    <!-- 核心卡片 -->
+    <string name="card_a_title">一键全量汉化</string>
+    <string name="card_a_sub">大地图 · 离线分包 · 权限自修</string>
+    <string name="card_b_title">一键破除维护锁</string>
+    <string name="card_b_sub">指纹四件套轮换 · 需超级用户授权</string>
+    <string name="tag_free">免ROOT</string>
+    <string name="tag_root">需ROOT</string>
+
+    <!-- 辅助工具栏 -->
+    <string name="btn_restore">还原英文原版</string>
+    <string name="btn_launch">启动王国</string>
+    <string name="btn_exit">退出</string>
+
+    <!-- 设置开关卡 -->
+    <string name="switch_auto_title">自动防维护拦截</string>
+    <string name="switch_auto_sub">启动游戏前自动轮换指纹，免手动破锁</string>
+    <string name="switch_deep_title">深度写入</string>
+    <string name="switch_deep_sub">同时写系统层 SSAID 与缓存层，更彻底</string>
+
+    <!-- 弹窗：汉化部署 -->
+    <string name="dlg_deploy_title">部署汉化？</string>
+    <string name="dlg_deploy_body">写入 %1$d 个离线分包与汉化大地图，随时可一键还原。</string>
+    <string name="dlg_deploy_ok">部署</string>
+    <string name="dlg_deploy_cancel">再想想</string>
+    <string name="dlg_deploy_done_title">汉化部署完毕</string>
+    <string name="dlg_deploy_done_body">重启游戏，即可看到中文王国。</string>
+    <string name="dlg_deploy_fail_title">部署中断</string>
+    <string name="dlg_deploy_fail_body">第 %1$d 个分包写入失败，已停止。可重试或还原。</string>
+    <string name="dlg_retry">重试</string>
+
+    <!-- 弹窗：破维护锁 -->
+    <string name="dlg_break_title">焕新指纹？</string>
+    <string name="dlg_break_body">轮换设备标识并清除维护锁，需超级用户授权。</string>
+    <string name="dlg_break_ok">焕新</string>
+    <string name="dlg_break_done_title">指纹已焕新</string>
+    <string name="dlg_break_done_body">维护锁已清除，直接启动游戏即可。</string>
+    <string name="dlg_break_fail_title">破锁失败</string>
+    <string name="dlg_break_fail_body">第 %1$d 步未通过，四件套已回滚原状。</string>
+    <string name="dlg_noroot_title">此功能需 Root</string>
+    <string name="dlg_noroot_body">破维护锁需修改系统级设备标识。免 Root 请清除游戏数据，或用虚拟沙箱运行。</string>
+    <string name="dlg_noroot_go">去授权</string>
+    <string name="dlg_noroot_know">知道了</string>
+
+    <!-- 弹窗：还原 -->
+    <string name="dlg_restore_title">还原原版？</string>
+    <string name="dlg_restore_body">删除全部汉化补丁，游戏恢复英文原版。</string>
+    <string name="dlg_restore_ok">还原</string>
+    <string name="dlg_restore_done_title">已还原原版</string>
+    <string name="dlg_restore_done_body">重启游戏即为英文原版。</string>
+
+    <!-- 弹窗：通用 -->
+    <string name="dlg_nogame_title">未检测到游戏</string>
+    <string name="dlg_nogame_body">请先安装《Elnea Kingdom》再使用本助手。</string>
+    <string name="dlg_ok">好</string>
+    <string name="dlg_cancel">取消</string>
+    <string name="dlg_stay">留在本页</string>
+    <string name="dlg_view_log">查看日志</string>
+    <string name="dlg_close">关闭</string>
+
+    <!-- 控制台日志行 -->
+    <string name="log_root_ok">Root 权限已就绪</string>
+    <string name="log_root_no">未获取 Root 权限，转入免Root模式</string>
+    <string name="log_said">[指纹] SSAID 已轮换 → %1$s</string>
+    <string name="log_uuid">[指纹] playerprefs uuid 已同步</string>
+    <string name="log_clean">[清扫] althi_uniq / maintenance / ws_account 已处理</string>
+    <string name="log_pack">[分包] %1$d/%2$d 写入完毕</string>
+    <string name="log_map_ok">[地图] 汉化大地图校验通过 (md5 %1$s)</string>
+    <string name="log_perm">[权限] 属主与 660 已修正</string>
+    <string name="log_done">[完成] 全部就绪，启动游戏验证</string>
+    <string name="log_fail">[失败] %1$s</string>
+    <string name="log_restore">[还原] 已删除汉化补丁，恢复英文原版</string>
+</resources>

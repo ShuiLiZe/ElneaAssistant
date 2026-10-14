@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS 18 电光蓝紫渐变（0A84FF → 5E5CE6 → BF5AF2） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <corners android:radius="14dp"/>
+    <gradient
+        android:startColor="#0A84FF"
+        android:centerColor="#5E5CE6"
+        android:endColor="#BF5AF2"
+        android:angle="315"/>
+</shape>
