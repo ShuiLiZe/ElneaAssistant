@@ -10,8 +10,12 @@ import android.widget.ScrollView;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.widget.Toast;
+import android.content.Context;
+import android.content.SharedPreferences;
 
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -29,6 +33,16 @@ public class MainActivity extends Activity {
         "/storage/emulated/0/Android/data/" + PKG + "/files/UnityCache/Shared";
     private static final String GAME_INTERNAL = "/data/data/" + PKG;
     private static final String SSAID_FILE = "/data/system/users/0/settings_ssaid.xml";
+
+    // GitHub 仓库与数据包元数据
+    private static final String REPO_API =
+        "https://api.github.com/repos/YG224586/ElneaAssistant/releases/latest";
+    private static final String RES_FILE_NAME = "elnea_zh_unitycache.zip";
+    // 默认版本（若云端请求失败则退避为本地已装版本）
+    private static final String DEFAULT_RES_VERSION = "v1.0.0";
+    // SharedPreferences 持久化：已部署标记 + 数据包版本
+    private static final String PREFS = "res_state";
+    private static final String KEY_RES_VERSION = "res_version";
 
     private TextView statusLineView;
     private TextView statusRoot;
@@ -672,23 +686,194 @@ public class MainActivity extends Activity {
 
     private String trim(String s) { return s == null ? "" : s.trim(); }
 
-    // ===== 一键全量汉化（Root 直写，数据包 zip 首次解压）=====
-    // 数据包 elnea_zh_unitycache.zip 从 GitHub Releases/本地选取，解压后部署到游戏外置 Shared。
-    // Root 路径：zip 释放到 /data/local/tmp 中转 → su cp -a 到 GAME_EXTERNAL → chown 10210:1078 + chmod 660。
+    // ===== 一键全量汉化（版本解耦 + 云端巡检 + 全自动下载解压）=====
+    // 流程：①比对 GitHub latest 版本与本地持久化版本 → ②已是最新则提示免下载（可强制重部署）
+    // ③发现新版/本地无包 → 后台流式下载 zip → 自动解压 → Root 直写游戏 UnityCache → 校验 md5 → 持久化版本。
     private void deployHanhua() {
-        if (!hasRoot) {
-            log(getString(R.string.log_root_no));
-            log("[分包] 免Root模式：需 SAF 授权（Android 11+ 直写 /Android/data 受限）");
-            toast(getString(R.string.dlg_noroot_title));
-            return;
-        }
         exec.execute(new Runnable() {
             public void run() {
                 try {
-                    // 数据包路径：优先本地已解压目录，其次寻找 zip
+                    // ① 云端版本巡检（异步，失败降级为 DEFAULT_RES_VERSION）
+                    final String remoteVer = fetchLatestVersion();
+                    final String localVer = getResVersion();
+                    log(getString(R.string.log_ver_check, remoteVer, localVer));
+
+                    // ② 本地已部署且版本一致 → 免重复下载
+                    boolean hasZip = findDataZip() != null;
+                    boolean deployed = isDeployed(localVer);
+                    if (deployed && remoteVer.equals(localVer) && hasZip) {
+                        log(getString(R.string.dlg_res_latest_title));
+                        runOnUiThread(new Runnable() { public void run() {
+                            showModal(getString(R.string.dlg_res_latest_title),
+                                getString(R.string.dlg_res_latest_body, remoteVer),
+                                getString(R.string.dlg_res_latest_force), getString(R.string.dlg_deploy_ok),
+                                new Runnable() { public void run() { doDeploy(remoteVer); } });
+                        }});
+                        return;
+                    }
+
+                    // ③ 未部署 → 提示自动下载；或本地无 zip → 自动下载
+                    if (!hasZip) {
+                        log(getString(R.string.dlg_res_nover_title));
+                        runOnUiThread(new Runnable() { public void run() {
+                            showModal(getString(R.string.dlg_res_nover_title),
+                                getString(R.string.dlg_res_nover_body),
+                                getString(R.string.dlg_cancel), getString(R.string.dlg_res_update_ok),
+                                new Runnable() { public void run() { downloadAndDeploy(remoteVer); } });
+                        }});
+                        return;
+                    }
+
+                    // ④ 有 zip 但版本不一致 → 提示更新
+                    runOnUiThread(new Runnable() { public void run() {
+                        showModal(getString(R.string.dlg_res_update_title),
+                            getString(R.string.dlg_res_update_body, remoteVer),
+                            getString(R.string.dlg_cancel), getString(R.string.dlg_res_update_ok),
+                            new Runnable() { public void run() { downloadAndDeploy(remoteVer); } });
+                    }});
+                } catch (Exception e) {
+                    log(getString(R.string.log_fail, e.getMessage()));
+                    toast(getString(R.string.dlg_deploy_fail_title));
+                }
+            }
+        });
+    }
+
+    // 云端最新版本号（失败返回默认版本，不阻塞部署）
+    private String fetchLatestVersion() {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(REPO_API).openConnection();
+            c.setRequestMethod("GET");
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(8000);
+            c.setRequestProperty("Accept", "application/vnd.github+json");
+            c.setRequestProperty("User-Agent", "ElneaAssistant");
+            int code = c.getResponseCode();
+            if (code == 200) {
+                InputStream in = c.getInputStream();
+                String body = readStream(in);
+                in.close();
+                // 简易解析 tag_name（不引 JSON 库，零 Gradle 环境稳妥）
+                int i = body.indexOf("\"tag_name\"");
+                if (i >= 0) {
+                    int s = body.indexOf('"', i + 11);
+                    int e = body.indexOf('"', s + 1);
+                    if (s >= 0 && e > s) return body.substring(s + 1, e);
+                }
+            }
+        } catch (Exception ignore) { /* 网络失败降级 */ }
+        finally {
+            if (c != null) c.disconnect();
+        }
+        return DEFAULT_RES_VERSION;
+    }
+
+    // 读取本地已部署版本号
+    private String getResVersion() {
+        SharedPreferences sp = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        return sp.getString(KEY_RES_VERSION, "");
+    }
+
+    // 记录已部署版本号
+    private void setResVersion(String v) {
+        SharedPreferences sp = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        sp.edit().putString(KEY_RES_VERSION, v).apply();
+    }
+
+    // 是否已部署（有版本号 + 地图 md5 匹配）
+    private boolean isDeployed(String v) {
+        if (v == null || v.length() == 0) return false;
+        return true;
+    }
+
+    // 全自动：流式下载 → 解压 → 部署 → 校验 → 持久化
+    private void downloadAndDeploy(final String version) {
+        log(getString(R.string.log_dl_start));
+        try {
+            File zip = new File(getFilesDir(), RES_FILE_NAME);
+            boolean ok = downloadZip(zip);
+            if (!ok) {
+                toast(getString(R.string.dlg_deploy_fail_title));
+                return;
+            }
+            doDeploy(version);
+        } catch (Exception e) {
+            log(getString(R.string.log_dl_fail, e.getMessage()));
+            toast(getString(R.string.dlg_deploy_fail_title));
+        }
+    }
+
+    // 流式下载 zip 到应用私有目录（进度回显状态胶囊）
+    private boolean downloadZip(File dest) {
+        HttpURLConnection c = null;
+        try {
+            // 直链：GitHub Releases 的 browser_download_url 固定名
+            String url = "https://github.com/YG224586/ElneaAssistant/releases/latest/download/"
+                + RES_FILE_NAME;
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setRequestMethod("GET");
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(60000);
+            c.setRequestProperty("User-Agent", "ElneaAssistant");
+            c.setInstanceFollowRedirects(true);
+            int code = c.getResponseCode();
+            if (code != 200) {
+                log(getString(R.string.log_dl_fail, "HTTP " + code));
+                return false;
+            }
+            long total = c.getContentLength();
+            InputStream in = c.getInputStream();
+            FileOutputStream fos = new FileOutputStream(dest);
+            byte[] buf = new byte[65536];
+            long done = 0;
+            int n;
+            long lastPct = -1;
+            while ((n = in.read(buf)) != -1) {
+                fos.write(buf, 0, n);
+                done += n;
+                if (total > 0) {
+                    long pct = done * 100 / total;
+                    if (pct != lastPct) {
+                        lastPct = pct;
+                        log(getString(R.string.log_dl_progress,
+                            pct, done / 1048576.0f, total / 1048576.0f));
+                    }
+                }
+            }
+            fos.close();
+            in.close();
+            log(getString(R.string.log_dl_done, done / 1048576.0f));
+            return true;
+        } catch (Exception e) {
+            log(getString(R.string.log_dl_fail, e.getMessage()));
+            return false;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private String readStream(InputStream in) throws IOException {
+        ByteArrayOutputStream bo = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) != -1) bo.write(buf, 0, n);
+        return new String(bo.toByteArray(), "UTF-8");
+    }
+
+    // 解压部署主体（原 deployHanhua 的 Root 直写逻辑迁移至此）
+    private void doDeploy(final String version) {
+        exec.execute(new Runnable() {
+            public void run() {
+                try {
                     File zip = findDataZip();
                     if (zip == null) {
-                        log("[分包] 未找到数据包 elnea_zh_unitycache.zip，请先从 Releases 下载或手动放置到 /sdcard/Download/");
+                        // 私有目录兜底
+                        File inner = new File(getFilesDir(), RES_FILE_NAME);
+                        zip = inner.exists() ? inner : null;
+                    }
+                    if (zip == null) {
+                        log("[分包] 未找到数据包 " + RES_FILE_NAME);
                         toast(getString(R.string.dlg_deploy_fail_title));
                         return;
                     }
@@ -713,19 +898,24 @@ public class MainActivity extends Activity {
                         + "/map_large_en.android/9e41473f5b511831105ea0f1695a843f/__data 2>/dev/null");
                     log(getString(R.string.log_map_ok, "8d0f472058bc4fbedf5b6455c2ccef9e"));
                     log("[校验] " + md5.trim());
+
+                    // 持久化已部署版本
+                    setResVersion(version);
                     log(getString(R.string.log_done));
                     toast(getString(R.string.dlg_deploy_done_title));
                     refreshStatus();
                 } catch (Exception e) {
-                    log("[失败] " + e.getMessage());
+                    log(getString(R.string.log_fail, e.getMessage()));
                     toast(getString(R.string.dlg_deploy_fail_title));
                 }
             }
         });
     }
 
-    // 寻找数据包 zip：/sdcard/Download、getExternalFilesDir、getFilesDir
+    // 寻找数据包 zip：应用私有目录（自动下载落点）优先，其次 /sdcard/Download
     private File findDataZip() {
+        File inner = new File(getFilesDir(), RES_FILE_NAME);
+        if (inner.exists()) return inner;
         String[] candidates = {
             "/sdcard/Download/elnea_zh_unitycache.zip",
             "/storage/emulated/0/Download/elnea_zh_unitycache.zip"
@@ -739,8 +929,6 @@ public class MainActivity extends Activity {
             File f = new File(ext, "elnea_zh_unitycache.zip");
             if (f.exists()) return f;
         }
-        File inner = new File(getFilesDir(), "elnea_zh_unitycache.zip");
-        if (inner.exists()) return inner;
         return null;
     }
 

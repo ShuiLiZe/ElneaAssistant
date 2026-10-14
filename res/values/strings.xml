@@ -93,4 +93,19 @@
     <string name="log_done">[完成] 全部就绪，启动游戏验证</string>
     <string name="log_fail">[失败] %1$s</string>
     <string name="log_restore">[还原] 已删除汉化补丁，恢复英文原版</string>
+
+    <!-- 数据包版本持久化 + 云端巡检 + 全自动下载解压 -->
+    <string name="dlg_res_latest_title">已是最新</string>
+    <string name="dlg_res_latest_body">当前汉化数据包已是最新版 (%1$s)，无需重复下载。</string>
+    <string name="dlg_res_latest_force">强制重新部署</string>
+    <string name="dlg_res_update_title">发现新版</string>
+    <string name="dlg_res_update_body">检测到新版汉化数据包 %1$s，是否下载更新？</string>
+    <string name="dlg_res_update_ok">下载更新</string>
+    <string name="dlg_res_nover_title">未检测到数据包</string>
+    <string name="dlg_res_nover_body">本地无汉化数据包，将自动下载最新版并部署。</string>
+    <string name="log_dl_start">[下载] 开始下载汉化包</string>
+    <string name="log_dl_progress">[下载] %1$d%% (%2$.1fMB/%3$.1fMB)</string>
+    <string name="log_dl_done">[下载] 完成，共 %1$.1fMB</string>
+    <string name="log_dl_fail">[下载] 失败：%1$s</string>
+    <string name="log_ver_check">[版本] 云端最新 %1$s · 本地 %2$s</string>
 </resources>
