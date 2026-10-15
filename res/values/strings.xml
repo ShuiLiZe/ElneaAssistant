@@ -107,5 +107,58 @@
     <string name="log_dl_progress">[下载] %1$d%% (%2$.1fMB/%3$.1fMB)</string>
     <string name="log_dl_done">[下载] 完成，共 %1$.1fMB</string>
     <string name="log_dl_fail">[下载] 失败：%1$s</string>
+    <string name="log_dl_mirror">[下载] 直连受阻，切换加速镜像 %1$s</string>
+    <string name="log_dl_retry">[下载] 重试中（第 %1$d 次）</string>
     <string name="log_ver_check">[版本] 云端最新 %1$s · 本地 %2$s</string>
+
+    <!-- ===== 卡片 C · 多存档备份与恢复（qw3.8max 文案定稿，纯新增不动基线）===== -->
+    <!-- 主界面卡片 -->
+    <string name="card_c_title">多存档备份与恢复</string>
+    <string name="card_c_sub">已存 %1$d 个备份 · 支持自定义备注</string>
+    <string name="card_c_sub_empty">暂无备份 · 支持自定义备注</string>
+
+    <!-- 存档抽屉 -->
+    <string name="saves_title">存档备份与恢复</string>
+    <string name="saves_add">＋ 备份当前存档</string>
+    <string name="saves_empty">还没有备份，点上方按钮存一个吧</string>
+    <string name="saves_item_meta">%1$s · %2$s</string>
+    <string name="saves_item_default">未命名备份</string>
+    <string name="btn_save_restore">恢复</string>
+    <string name="btn_save_delete">删除</string>
+
+    <!-- 弹窗：备份（输入备注）-->
+    <string name="dlg_backup_title">备份当前存档</string>
+    <string name="dlg_backup_body">给这个存档写句备注，方便日后辨认。</string>
+    <string name="dlg_backup_hint">如「第2年·近卫骑士选拔前」</string>
+    <string name="dlg_backup_ok">备份</string>
+
+    <!-- 弹窗：恢复确认 -->
+    <string name="dlg_srestore_title">恢复此存档？</string>
+    <string name="dlg_srestore_body">将覆盖当前游戏存档「%1$s」，操作不可撤销，请确认游戏已关闭。</string>
+    <string name="dlg_srestore_ok">恢复</string>
+    <string name="dlg_srestore_done_title">恢复完成</string>
+    <string name="dlg_srestore_done_body">存档已写回，启动游戏即可继续。</string>
+
+    <!-- 弹窗：删除确认 -->
+    <string name="dlg_sdel_title">删除此备份？</string>
+    <string name="dlg_sdel_body">「%1$s」将被永久删除，无法找回。</string>
+    <string name="dlg_sdel_ok">删除</string>
+
+    <!-- 弹窗：结果 -->
+    <string name="dlg_sbackup_done_title">备份完成</string>
+    <string name="dlg_sbackup_done_body">已存为「%1$s」。</string>
+    <string name="dlg_sbackup_fail_title">备份失败</string>
+    <string name="dlg_sbackup_fail_body">写入存档时出错：%1$s</string>
+    <string name="dlg_srestore_fail_title">恢复失败</string>
+    <string name="dlg_srestore_fail_body">写回存档时出错：%1$s</string>
+    <string name="dlg_noroot_save_body">存档备份与恢复需读写游戏私有目录，须超级用户授权。</string>
+
+    <!-- 控制台日志行 -->
+    <string name="log_save_scan">[存档] 扫描到 %1$d 个备份</string>
+    <string name="log_save_backup">[存档] 已备份 → %1$s (%2$s)</string>
+    <string name="log_save_kill">[存档] 已强制停止游戏，准备写回</string>
+    <string name="log_save_restore">[存档] 已恢复「%1$s」</string>
+    <string name="log_save_delete">[存档] 已删除「%1$s」</string>
+    <string name="log_save_perm">[存档] 属主 u0_a210 与 600 权限已修正</string>
+    <string name="log_save_fail">[存档] 失败：%1$s</string>
 </resources>

@@ -66,6 +66,9 @@ public class MainActivity extends Activity {
     private TextView statusRoot;
     private TextView cardASubView;
     private TextView cardATagView;
+    private TextView cardCSubView;
+    private LinearLayout cardCView;
+    private android.app.Dialog saveDrawerDlg;
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
     private volatile boolean hasRoot = false;
     private boolean gameInstalled = false;
@@ -231,6 +234,14 @@ public class MainActivity extends Activity {
             R.drawable.icon_bg_orange, R.drawable.ic_shield_key,
             new Runnable() { public void run() { confirmBreakLock(); } });
         root.addView(btnFixMaint);
+
+        // ===== ③b 卡片 C · 多存档备份与恢复 =====
+        refreshCardCSub();
+        cardCView = makeCard(getString(R.string.card_c_title),
+            getString(R.string.card_c_sub, 0), getString(R.string.tag_root),
+            R.drawable.icon_bg_purple, R.drawable.ic_save,
+            new Runnable() { public void run() { openSaveDrawer(); } });
+        root.addView(cardCView);
 
         // ===== ④ 主启动条（iOS 标志性 50dp 全宽纯蓝加粗胶囊）=====
         Button btnLaunch = makeLaunchBar(getString(R.string.btn_launch),
@@ -556,6 +567,9 @@ public class MainActivity extends Activity {
         mid.addView(t2);
         if (titleText.equals(getString(R.string.card_a_title))) {
             cardASubView = t2;
+        }
+        if (titleText.equals(getString(R.string.card_c_title))) {
+            cardCSubView = t2;
         }
         card.addView(mid);
 
@@ -1199,50 +1213,81 @@ public class MainActivity extends Activity {
         }
     }
 
-    // 流式下载 zip 到应用私有目录（进度回显状态胶囊）
+    // 多镜像下载源（国内加速 + GitHub 直链，轮询降级）
+    private static final String[] DL_MIRRORS = {
+        "https://ghfast.top/https://github.com/YG224586/ElneaAssistant/releases/latest/download/",
+        "https://ghproxy.net/https://github.com/YG224586/ElneaAssistant/releases/latest/download/",
+        "https://github.com/YG224586/ElneaAssistant/releases/latest/download/"
+    };
+
+    // 流式下载 zip 到应用私有目录（手动跟踪 302 重定向 + 多镜像轮询）
     private boolean downloadZip(File dest) {
+        for (String mirror : DL_MIRRORS) {
+            if (downloadFrom(mirror + RES_FILE_NAME, dest)) {
+                return true;
+            }
+            log(getString(R.string.log_dl_fail, "镜像失败，切换下一源"));
+        }
+        log(getString(R.string.log_dl_fail, "所有镜像均下载失败"));
+        return false;
+    }
+
+    // 单源下载：手动跟 302/301 重定向（上限 5 次），避免跨域多跳被判死
+    private boolean downloadFrom(String url, File dest) {
         HttpURLConnection c = null;
         try {
-            // 直链：GitHub Releases 的 browser_download_url 固定名
-            String url = "https://github.com/YG224586/ElneaAssistant/releases/latest/download/"
-                + RES_FILE_NAME;
-            c = (HttpURLConnection) new URL(url).openConnection();
-            c.setRequestMethod("GET");
-            c.setConnectTimeout(15000);
-            c.setReadTimeout(60000);
-            c.setRequestProperty("User-Agent", "ElneaAssistant");
-            c.setInstanceFollowRedirects(true);
-            int code = c.getResponseCode();
-            if (code != 200) {
-                log(getString(R.string.log_dl_fail, "HTTP " + code));
-                return false;
-            }
-            long total = c.getContentLength();
-            InputStream in = c.getInputStream();
-            FileOutputStream fos = new FileOutputStream(dest);
-            byte[] buf = new byte[65536];
-            long done = 0;
-            int n;
-            long lastPct = -1;
-            while ((n = in.read(buf)) != -1) {
-                fos.write(buf, 0, n);
-                done += n;
-                if (total > 0) {
-                    long pct = done * 100 / total;
-                    if (pct != lastPct) {
-                        lastPct = pct;
-                        log(getString(R.string.log_dl_progress,
-                            pct, done / 1048576.0f, total / 1048576.0f));
-                        notifyProgress("汉化资源更新中",
-                            "已下载 " + pct + "% (" + (done / 1048576.0f) + " / "
-                            + (total / 1048576.0f) + " MB)", true);
+            String cur = url;
+            for (int hop = 0; hop < 5; hop++) {
+                c = (HttpURLConnection) new URL(cur).openConnection();
+                c.setRequestMethod("GET");
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(60000);
+                c.setRequestProperty("User-Agent", "ElneaAssistant");
+                c.setInstanceFollowRedirects(false); // 手动跟，防跨域丢失
+                int code = c.getResponseCode();
+                if (code == 301 || code == 302 || code == 307 || code == 308) {
+                    String loc = c.getHeaderField("Location");
+                    c.disconnect();
+                    if (loc == null) return false;
+                    cur = loc; // 绝对 URL 直接跳；相对则拼 base
+                    if (!cur.startsWith("http")) {
+                        cur = new URL(new URL(url), loc).toString();
+                    }
+                    continue;
+                }
+                if (code != 200) {
+                    log(getString(R.string.log_dl_fail, "HTTP " + code));
+                    return false;
+                }
+                // 200：开始流式写盘
+                long total = c.getContentLength();
+                InputStream in = c.getInputStream();
+                FileOutputStream fos = new FileOutputStream(dest);
+                byte[] buf = new byte[65536];
+                long done = 0;
+                int n;
+                long lastPct = -1;
+                while ((n = in.read(buf)) != -1) {
+                    fos.write(buf, 0, n);
+                    done += n;
+                    if (total > 0) {
+                        long pct = done * 100 / total;
+                        if (pct != lastPct) {
+                            lastPct = pct;
+                            log(getString(R.string.log_dl_progress,
+                                pct, done / 1048576.0f, total / 1048576.0f));
+                            notifyProgress("汉化资源更新中",
+                                "已下载 " + pct + "% (" + (done / 1048576.0f) + " / "
+                                + (total / 1048576.0f) + " MB)", true);
+                        }
                     }
                 }
+                fos.close();
+                in.close();
+                log(getString(R.string.log_dl_done, done / 1048576.0f));
+                return true;
             }
-            fos.close();
-            in.close();
-            log(getString(R.string.log_dl_done, done / 1048576.0f));
-            return true;
+            return false;
         } catch (Exception e) {
             log(getString(R.string.log_dl_fail, e.getMessage()));
             return false;
@@ -1459,6 +1504,438 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             log("[失败] " + e.getMessage());
         }
+    }
+
+    // ===== 多存档备份与恢复 =====
+    // 备份目标目录（游戏核心存档，免全量素材）：
+    //   ws_account / f_*（Contents 下）/ v2.playerprefs.xml / paid_storage_sp.xml
+    private static final String SAVES_DIR = "/sdcard/ElneaAssistant/saves";
+
+    private void refreshCardCSub() {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                int n = countSaves();
+                if (cardCSubView != null) {
+                    cardCSubView.setText(n > 0
+                        ? getString(R.string.card_c_sub, n)
+                        : getString(R.string.card_c_sub_empty));
+                }
+            }
+        });
+    }
+
+    // 扫描已存在的备份槽位数（只数目录名 save_* 且含 meta.json 的）
+    private int countSaves() {
+        File root = new File(SAVES_DIR);
+        File[] fs = root.listFiles();
+        if (fs == null) return 0;
+        int c = 0;
+        for (File f : fs) {
+            if (f.isDirectory() && new File(f, "meta.json").exists()) c++;
+        }
+        return c;
+    }
+
+    // 打开存档抽屉（iOS 风格全屏 Dialog：顶部「＋备份」+ 列表）
+    private void openSaveDrawer() {
+        if (!hasRoot) {
+            showModal(getString(R.string.dlg_noroot_title),
+                getString(R.string.dlg_noroot_save_body),
+                getString(R.string.dlg_close), null, null);
+            return;
+        }
+        runOnUiThread(new Runnable() {
+            public void run() {
+                final android.app.Dialog dlg = new android.app.Dialog(MainActivity.this);
+                saveDrawerDlg = dlg;
+                dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+                LinearLayout panel = new LinearLayout(MainActivity.this);
+                panel.setOrientation(LinearLayout.VERTICAL);
+                panel.setPadding(dp(20), dp(20), dp(20), dp(20));
+                panel.setBackgroundColor(Color.parseColor("#F5F5F7"));
+
+                // 标题
+                TextView title = new TextView(MainActivity.this);
+                title.setText(getString(R.string.saves_title));
+                title.setTextColor(Color.parseColor("#1D1D1F"));
+                title.setTextSize(22);
+                title.setTypeface(null, Typeface.BOLD);
+                panel.addView(title);
+
+                // ＋ 备份当前存档按钮
+                TextView addBtn = new TextView(MainActivity.this);
+                addBtn.setText(getString(R.string.saves_add));
+                addBtn.setTextColor(Color.parseColor("#0066CC"));
+                addBtn.setTextSize(16);
+                addBtn.setTypeface(null, Typeface.BOLD);
+                addBtn.setPadding(0, dp(14), 0, dp(14));
+                addBtn.setClickable(true);
+                addBtn.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) { dlg.dismiss(); showBackupDialog(); }
+                });
+                panel.addView(addBtn);
+
+                // 列表容器
+                LinearLayout list = new LinearLayout(MainActivity.this);
+                list.setOrientation(LinearLayout.VERTICAL);
+                panel.addView(list);
+
+                // 扫描并渲染备份项
+                File root = new File(SAVES_DIR);
+                File[] fs = root.listFiles();
+                if (fs == null || fs.length == 0) {
+                    TextView empty = new TextView(MainActivity.this);
+                    empty.setText(getString(R.string.saves_empty));
+                    empty.setTextColor(Color.parseColor("#86868B"));
+                    empty.setTextSize(13);
+                    empty.setGravity(android.view.Gravity.CENTER);
+                    empty.setPadding(0, dp(30), 0, dp(30));
+                    list.addView(empty);
+                } else {
+                    // 按修改时间倒序
+                    java.util.Arrays.sort(fs, new java.util.Comparator<File>() {
+                        public int compare(File a, File b) {
+                            return Long.compare(b.lastModified(), a.lastModified());
+                        }
+                    });
+                    for (final File f : fs) {
+                        if (!f.isDirectory()) continue;
+                        File meta = new File(f, "meta.json");
+                        if (!meta.exists()) continue;
+                        String note = readMetaNote(meta);
+                        String time = readMetaTime(meta);
+                        list.addView(makeSaveItem(f, note, time));
+                    }
+                }
+
+                dlg.setContentView(panel);
+                android.view.Window win = dlg.getWindow();
+                if (win != null) {
+                    win.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+                    win.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                        android.view.WindowManager.LayoutParams.MATCH_PARENT);
+                    win.setGravity(android.view.Gravity.CENTER);
+                }
+                dlg.show();
+            }
+        });
+    }
+
+    // 单个备份条目：备注 + 时间 + 恢复/删除
+    private LinearLayout makeSaveItem(final File dir, String note, String time) {
+        LinearLayout item = new LinearLayout(this);
+        item.setOrientation(LinearLayout.VERTICAL);
+        item.setPadding(dp(14), dp(12), dp(14), dp(12));
+        item.setBackgroundResource(R.drawable.card_utility);
+
+        TextView metaTv = new TextView(this);
+        String metaText = note + " · " + time;
+        metaTv.setText(metaText);
+        metaTv.setTextColor(Color.parseColor("#1D1D1F"));
+        metaTv.setTextSize(14);
+        metaTv.setTypeface(null, Typeface.BOLD);
+        item.addView(metaTv);
+
+        LinearLayout btns = new LinearLayout(this);
+        btns.setOrientation(LinearLayout.HORIZONTAL);
+        btns.setGravity(android.view.Gravity.RIGHT);
+        btns.setPadding(0, dp(8), 0, 0);
+
+        TextView restoreBtn = new TextView(this);
+        restoreBtn.setText(getString(R.string.btn_save_restore));
+        restoreBtn.setTextColor(Color.parseColor("#0066CC"));
+        restoreBtn.setTextSize(14);
+        restoreBtn.setPadding(0, 0, dp(20), 0);
+        restoreBtn.setClickable(true);
+        restoreBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { confirmRestoreSave(dir, readMetaNote(new File(dir, "meta.json"))); }
+        });
+        btns.addView(restoreBtn);
+
+        TextView delBtn = new TextView(this);
+        delBtn.setText(getString(R.string.btn_save_delete));
+        delBtn.setTextColor(Color.parseColor("#FF3B30"));
+        delBtn.setTextSize(14);
+        delBtn.setClickable(true);
+        delBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { confirmDeleteSave(dir, readMetaNote(new File(dir, "meta.json"))); }
+        });
+        btns.addView(delBtn);
+        item.addView(btns);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, 0, 0, dp(10));
+        item.setLayoutParams(lp);
+        return item;
+    }
+
+    // 读 meta.json 里的 note 字段（手解 JSON，零库）
+    private String readMetaNote(File meta) {
+        String s = readFile(meta);
+        String note = extractJsonField(s, "note");
+        return (note == null || note.length() == 0) ? getString(R.string.saves_item_default) : note;
+    }
+
+    private String readMetaTime(File meta) {
+        String s = readFile(meta);
+        String t = extractJsonField(s, "time");
+        return (t == null || t.length() == 0) ? "" : t;
+    }
+
+    private String readFile(File f) {
+        try {
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) != -1) bo.write(buf, 0, n);
+            in.close();
+            return new String(bo.toByteArray(), "UTF-8");
+        } catch (Exception e) { return ""; }
+    }
+
+    // 极简 JSON 字段提取：找 "key":"value"
+    private String extractJsonField(String json, String key) {
+        if (json == null) return null;
+        String pat = "\"" + key + "\":\"";
+        int i = json.indexOf(pat);
+        if (i < 0) return null;
+        int start = i + pat.length();
+        int end = json.indexOf('"', start);
+        if (end < 0) return null;
+        return json.substring(start, end);
+    }
+
+    // 备份输入备注弹窗
+    private void showBackupDialog() {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                final android.app.Dialog dlg = new android.app.Dialog(MainActivity.this);
+                dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+                LinearLayout panel = new LinearLayout(MainActivity.this);
+                panel.setOrientation(LinearLayout.VERTICAL);
+                panel.setBackgroundResource(R.drawable.alert_bg);
+
+                LinearLayout content = new LinearLayout(MainActivity.this);
+                content.setOrientation(LinearLayout.VERTICAL);
+                content.setPadding(dp(18), dp(20), dp(18), dp(18));
+                content.setGravity(android.view.Gravity.CENTER);
+
+                TextView tv = new TextView(MainActivity.this);
+                tv.setText(getString(R.string.dlg_backup_title));
+                tv.setTextColor(Color.parseColor("#000000"));
+                tv.setTextSize(17);
+                tv.setTypeface(null, Typeface.BOLD);
+                tv.setGravity(android.view.Gravity.CENTER);
+                content.addView(tv);
+
+                TextView bv = new TextView(MainActivity.this);
+                bv.setText(getString(R.string.dlg_backup_body));
+                bv.setTextColor(Color.parseColor("#3C3C43"));
+                bv.setTextSize(13);
+                bv.setGravity(android.view.Gravity.CENTER);
+                bv.setPadding(0, dp(4), 0, dp(10));
+                content.addView(bv);
+
+                final android.widget.EditText input = new android.widget.EditText(MainActivity.this);
+                input.setHint(getString(R.string.dlg_backup_hint));
+                input.setTextColor(Color.parseColor("#1D1D1F"));
+                input.setHintTextColor(Color.parseColor("#C7C7CC"));
+                input.setTextSize(15);
+                input.setSingleLine(true);
+                input.setPadding(dp(12), dp(10), dp(12), dp(10));
+                input.setBackgroundResource(R.drawable.input_bg);
+                content.addView(input);
+                panel.addView(content);
+
+                View hDivider = new View(MainActivity.this);
+                hDivider.setBackgroundColor(Color.parseColor("#3C3C4329"));
+                panel.addView(hDivider, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1));
+
+                LinearLayout btns = new LinearLayout(MainActivity.this);
+                btns.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams btnsLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(44));
+                btns.setLayoutParams(btnsLp);
+
+                TextView btnCancel = new TextView(MainActivity.this);
+                btnCancel.setText(getString(R.string.dlg_cancel));
+                btnCancel.setTextColor(Color.parseColor("#007AFF"));
+                btnCancel.setTextSize(17);
+                btnCancel.setGravity(android.view.Gravity.CENTER);
+                LinearLayout.LayoutParams bclp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+                btnCancel.setLayoutParams(bclp);
+                btnCancel.setClickable(true);
+                btnCancel.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) { dlg.dismiss(); }
+                });
+                btns.addView(btnCancel);
+
+                View vDivider = new View(MainActivity.this);
+                vDivider.setBackgroundColor(Color.parseColor("#3C3C4329"));
+                btns.addView(vDivider, new LinearLayout.LayoutParams(1,
+                    LinearLayout.LayoutParams.MATCH_PARENT));
+
+                TextView btnOk = new TextView(MainActivity.this);
+                btnOk.setText(getString(R.string.dlg_backup_ok));
+                btnOk.setTextColor(Color.parseColor("#007AFF"));
+                btnOk.setTextSize(17);
+                btnOk.setTypeface(null, Typeface.BOLD);
+                btnOk.setGravity(android.view.Gravity.CENTER);
+                LinearLayout.LayoutParams boklp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+                btnOk.setLayoutParams(boklp);
+                btnOk.setClickable(true);
+                btnOk.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        dlg.dismiss();
+                        final String note = input.getText().toString().trim();
+                        doBackup(note);
+                    }
+                });
+                btns.addView(btnOk);
+                panel.addView(btns);
+
+                dlg.setContentView(panel);
+                android.view.Window win = dlg.getWindow();
+                if (win != null) {
+                    win.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+                    win.setLayout(dp(290), android.view.WindowManager.LayoutParams.WRAP_CONTENT);
+                    win.setGravity(android.view.Gravity.CENTER);
+                    win.setDimAmount(0.35f);
+                }
+                dlg.show();
+            }
+        });
+    }
+
+    // 执行备份：force-stop 后 cp 核心存档到 save_<时间戳>/
+    private void doBackup(final String note) {
+        exec.execute(new Runnable() {
+            public void run() {
+                try {
+                    long ts = System.currentTimeMillis();
+                    final String slot = "save_" + ts;
+                    String dir = SAVES_DIR + "/" + slot;
+                    String mk = "mkdir -p " + dir;
+                    String r = su(mk);
+                    if (r.contains("Error") || r.contains("denied")) {
+                        toast(getString(R.string.dlg_sbackup_fail_title));
+                        log(getString(R.string.log_save_fail, r.trim()));
+                        return;
+                    }
+                    // 先 force-stop 保证存档一致
+                    su("am force-stop " + PKG);
+                    log(getString(R.string.log_save_kill));
+
+                    // 拷贝核心存档
+                    String contents = GAME_INTERNAL + "/files/Contents";
+                    su("cp -a " + contents + "/ws_account " + dir + "/ 2>/dev/null");
+                    su("cp -a " + contents + "/f_* " + dir + "/ 2>/dev/null");
+                    su("cp -a " + GAME_INTERNAL + "/shared_prefs/" + PKG + ".v2.playerprefs.xml " + dir + "/ 2>/dev/null");
+                    su("cp -a " + GAME_INTERNAL + "/shared_prefs/paid_storage_sp.xml " + dir + "/ 2>/dev/null");
+
+                    // 写 meta.json（含备注/时间）——用 Java UTF-8 写临时文件再 su cp，
+                    // 避免 su -c echo 中文经 shell 管道编码损坏
+                    String meta = "{\"note\":\"" + esc(note) + "\",\"time\":\"" + timeStr(ts) + "\"}";
+                    java.io.File tmpMeta = new java.io.File(getFilesDir(), "meta.json");
+                    java.io.FileOutputStream mfos = new java.io.FileOutputStream(tmpMeta);
+                    mfos.write(meta.getBytes("UTF-8"));
+                    mfos.close();
+                    su("cp " + tmpMeta.getAbsolutePath() + " " + dir + "/meta.json");
+                    tmpMeta.delete();
+
+                    log(getString(R.string.log_save_backup, note.length() > 0 ? note : getString(R.string.saves_item_default), timeStr(ts)));
+                    toast(getString(R.string.dlg_sbackup_done_title));
+                    refreshCardCSub();
+                } catch (Exception e) {
+                    log(getString(R.string.log_save_fail, e.getMessage()));
+                    toast(getString(R.string.dlg_sbackup_fail_title));
+                }
+            }
+        });
+    }
+
+    private void confirmRestoreSave(final File dir, final String note) {
+        showModal(getString(R.string.dlg_srestore_title),
+            getString(R.string.dlg_srestore_body, note),
+            getString(R.string.dlg_cancel), getString(R.string.dlg_srestore_ok),
+            new Runnable() { public void run() { doRestoreSave(dir, note); } });
+    }
+
+    private void doRestoreSave(final File dir, final String note) {
+        exec.execute(new Runnable() {
+            public void run() {
+                try {
+                    // force-stop 游戏
+                    su("am force-stop " + PKG);
+                    log(getString(R.string.log_save_kill));
+
+                    String contents = GAME_INTERNAL + "/files/Contents";
+                    su("cp -a " + dir.getAbsolutePath() + "/ws_account " + contents + "/ 2>/dev/null");
+                    su("cp -a " + dir.getAbsolutePath() + "/f_* " + contents + "/ 2>/dev/null");
+                    su("cp -a " + dir.getAbsolutePath() + "/" + PKG + ".v2.playerprefs.xml "
+                        + GAME_INTERNAL + "/shared_prefs/ 2>/dev/null");
+                    su("cp -a " + dir.getAbsolutePath() + "/paid_storage_sp.xml "
+                        + GAME_INTERNAL + "/shared_prefs/ 2>/dev/null");
+
+                    // 属主/权限修正（游戏 uid/gid = 10210:1078，对应 u0_a210）
+                    su("chown -R 10210:1078 " + contents + " " + GAME_INTERNAL + "/shared_prefs");
+                    su("chmod 600 " + contents + "/ws_account " + contents + "/f_* "
+                        + GAME_INTERNAL + "/shared_prefs/" + PKG + ".v2.playerprefs.xml "
+                        + GAME_INTERNAL + "/shared_prefs/paid_storage_sp.xml 2>/dev/null");
+                    log(getString(R.string.log_save_perm));
+
+                    log(getString(R.string.log_save_restore, note));
+                    toast(getString(R.string.dlg_srestore_done_title));
+                    refreshCardCSub();
+                } catch (Exception e) {
+                    log(getString(R.string.log_save_fail, e.getMessage()));
+                    toast(getString(R.string.dlg_srestore_fail_title));
+                }
+            }
+        });
+    }
+
+    private void confirmDeleteSave(final File dir, final String note) {
+        showModal(getString(R.string.dlg_sdel_title),
+            getString(R.string.dlg_sdel_body, note),
+            getString(R.string.dlg_cancel), getString(R.string.dlg_sdel_ok),
+            new Runnable() { public void run() { doDeleteSave(dir, note); } });
+    }
+
+    private void doDeleteSave(final File dir, final String note) {
+        exec.execute(new Runnable() {
+            public void run() {
+                try {
+                    String r = su("rm -rf " + dir.getAbsolutePath());
+                    log(getString(R.string.log_save_delete, note));
+                    refreshCardCSub();
+                    // 删除后关闭抽屉，重新打开即刷新列表
+                    runOnUiThread(new Runnable() { public void run() {
+                        if (saveDrawerDlg != null) { saveDrawerDlg.dismiss(); saveDrawerDlg = null; }
+                        openSaveDrawer();
+                    }});
+                } catch (Exception e) {
+                    log(getString(R.string.log_save_fail, e.getMessage()));
+                }
+            }
+        });
+    }
+
+    private String esc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ");
+    }
+
+    private String timeStr(long ts) {
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+        return f.format(new java.util.Date(ts));
     }
 
     // ===== 工具方法 =====

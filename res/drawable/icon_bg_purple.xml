@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 王室紫渐变（AF52DE → 5856D6） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <corners android:radius="14dp"/>
+    <gradient
+        android:startColor="#AF52DE"
+        android:centerColor="#7A5FD6"
+        android:endColor="#5856D6"
+        android:angle="315"/>
+</shape>
