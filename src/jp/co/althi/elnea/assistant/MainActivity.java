@@ -40,8 +40,14 @@ public class MainActivity extends Activity {
     // GitHub 仓库与数据包元数据
     private static final String REPO_API =
         "https://api.github.com/repos/YG224586/ElneaAssistant/releases/latest";
+    // 纯净版本清单（脱离 GitHub API 限流/403），多通道直链
+    private static final String[] VER_JSON_URLS = {
+        "https://raw.githubusercontent.com/YG224586/ElneaAssistant/main/version.json",
+        "https://ghproxy.com/https://raw.githubusercontent.com/YG224586/ElneaAssistant/main/version.json",
+        "https://mirror.ghproxy.com/https://raw.githubusercontent.com/YG224586/ElneaAssistant/main/version.json"
+    };
     private static final String RES_FILE_NAME = "elnea_zh_unitycache.zip";
-    // 默认版本（若云端请求失败则退避为本地已装版本）
+    // 默认版本（仅作兜底占位，不再当失败标记）
     private static final String DEFAULT_RES_VERSION = "v1.0.0";
     // 当前 App 软件版本号（与 AndroidManifest versionName 保持一致）
     private static final String APP_VERSION = "v1.0.0";
@@ -322,8 +328,7 @@ public class MainActivity extends Activity {
     private void checkAppUpdate() {
         try {
             final String remoteVer = fetchLatestVersion();
-            if (remoteVer == null || remoteVer.length() == 0
-                || remoteVer.equals(DEFAULT_RES_VERSION)) return;
+            if (remoteVer == null || remoteVer.length() == 0) return;
             if (!remoteVer.equals(APP_VERSION)) {
                 showUpdateModal(remoteVer);
             }
@@ -365,8 +370,7 @@ public class MainActivity extends Activity {
                         ? "未部署" : localRes;
                     runOnUiThread(new Runnable() {
                         public void run() {
-                            if (remoteVer == null || remoteVer.length() == 0
-                                || remoteVer.equals(DEFAULT_RES_VERSION)) {
+                            if (remoteVer == null || remoteVer.length() == 0) {
                                 log("[更新] 网络不可达");
                                 toast("检查更新失败，请检查网络");
                                 return;
@@ -422,12 +426,11 @@ public class MainActivity extends Activity {
         try {
             final String remoteVer = fetchLatestVersion();
             final String localVer = getResVersion();
-            if (remoteVer != null && remoteVer.length() > 0
-                && !remoteVer.equals(DEFAULT_RES_VERSION)) {
+            if (remoteVer != null && remoteVer.length() > 0) {
                 if (localVer == null || localVer.length() == 0) {
                     setCardASub("检测到可用汉化数据 " + remoteVer + " · 点击一键部署");
                 } else if (!remoteVer.equals(localVer)) {
-                    setCardASub("发现新版本汉化 " + remoteVer + "（当前 " + localVer + "）· 点击更新");
+                    setCardASub("✨ 发现新版本汉化 " + remoteVer + "（当前 " + localVer + "）· 点击更新");
                 } else {
                     setCardASub("已是最新汉化 " + remoteVer + " · 点击校验或重新覆盖");
                 }
@@ -1005,9 +1008,16 @@ public class MainActivity extends Activity {
         exec.execute(new Runnable() {
             public void run() {
                 try {
-                    // ① 云端版本巡检（异步，失败降级为 DEFAULT_RES_VERSION）
+                    // ① 云端版本巡检（异步，失败返回 null）
                     final String remoteVer = fetchLatestVersion();
                     final String localVer = getResVersion();
+                    if (remoteVer == null || remoteVer.length() == 0) {
+                        log(getString(R.string.log_dl_fail, "版本巡检失败"));
+                        runOnUiThread(new Runnable() { public void run() {
+                            toast("云端版本巡检失败，请检查网络后重试");
+                        }});
+                        return;
+                    }
                     log(getString(R.string.log_ver_check, remoteVer, localVer));
 
                     // ② 本地已部署且版本一致 → 免重复下载
@@ -1053,6 +1063,10 @@ public class MainActivity extends Activity {
 
     // 云端最新版本号（失败返回默认版本，不阻塞部署）
     private String fetchLatestVersion() {
+        // 多通道读取纯净 version.json（直连 + 国内镜像），脱离 GitHub API 403 限流
+        String v = fetchVersionFromJson();
+        if (v != null && v.length() > 0) return v;
+        // 回退：GitHub Releases API（可能 403）
         HttpURLConnection c = null;
         try {
             c = (HttpURLConnection) new URL(REPO_API).openConnection();
@@ -1078,7 +1092,48 @@ public class MainActivity extends Activity {
         finally {
             if (c != null) c.disconnect();
         }
-        return DEFAULT_RES_VERSION;
+        return null; // 明确返回 null 表示失败，不再冒充成功
+    }
+
+    // 读取纯净 version.json：{"version":"v1.0.0"} 或 {"tag_name":"v1.0.0"}
+    private String fetchVersionFromJson() {
+        for (String url : VER_JSON_URLS) {
+            HttpURLConnection c = null;
+            try {
+                c = (HttpURLConnection) new URL(url).openConnection();
+                c.setRequestMethod("GET");
+                c.setConnectTimeout(6000);
+                c.setReadTimeout(6000);
+                c.setRequestProperty("User-Agent", "ElneaAssistant");
+                int code = c.getResponseCode();
+                if (code == 200) {
+                    InputStream in = c.getInputStream();
+                    String body = readStream(in);
+                    in.close();
+                    String v = parseVersionJson(body);
+                    if (v != null && v.length() > 0) return v;
+                }
+            } catch (Exception ignore) { /* 换下一通道 */ }
+            finally {
+                if (c != null) c.disconnect();
+            }
+        }
+        return null;
+    }
+
+    // 从 {"version":"v1.0.0"} 或 {"tag_name":"v1.0.0"} 提取版本号
+    private String parseVersionJson(String body) {
+        if (body == null) return null;
+        String[] keys = { "\"version\"", "\"tag_name\"" };
+        for (String k : keys) {
+            int i = body.indexOf(k);
+            if (i >= 0) {
+                int s = body.indexOf('"', i + k.length());
+                int e = body.indexOf('"', s + 1);
+                if (s >= 0 && e > s) return body.substring(s + 1, e);
+            }
+        }
+        return null;
     }
 
     // 读取本地已部署版本号
