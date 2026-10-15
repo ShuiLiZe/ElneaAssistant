@@ -1222,10 +1222,13 @@ public class MainActivity extends Activity {
 
     // 流式下载 zip 到应用私有目录（手动跟踪 302 重定向 + 多镜像轮询）
     private boolean downloadZip(File dest) {
-        for (String mirror : DL_MIRRORS) {
+        for (int i = 0; i < DL_MIRRORS.length; i++) {
+            String mirror = DL_MIRRORS[i];
+            if (i > 0) log(getString(R.string.log_dl_mirror, mirror));
             if (downloadFrom(mirror + RES_FILE_NAME, dest)) {
                 return true;
             }
+            if (i < DL_MIRRORS.length - 1) log(getString(R.string.log_dl_retry, i + 1));
             log(getString(R.string.log_dl_fail, "镜像失败，切换下一源"));
         }
         log(getString(R.string.log_dl_fail, "所有镜像均下载失败"));
