@@ -1575,7 +1575,7 @@ public class MainActivity extends Activity {
                 addBtn.setPadding(0, dp(14), 0, dp(14));
                 addBtn.setClickable(true);
                 addBtn.setOnClickListener(new View.OnClickListener() {
-                    public void onClick(View v) { dlg.dismiss(); showBackupDialog(); }
+                    public void onClick(View v) { showBackupDialog(); }
                 });
                 panel.addView(addBtn);
 
@@ -1851,11 +1851,18 @@ public class MainActivity extends Activity {
                     mfos.write(meta.getBytes("UTF-8"));
                     mfos.close();
                     su("cp " + tmpMeta.getAbsolutePath() + " " + dir + "/meta.json");
+                    // 属主 root:root 默认 600，普通应用 UID 读不了 → 放宽到 666 让界面可读备注
+                    su("chmod 666 " + dir + "/meta.json");
                     tmpMeta.delete();
 
                     log(getString(R.string.log_save_backup, note.length() > 0 ? note : getString(R.string.saves_item_default), timeStr(ts)));
                     toast(getString(R.string.dlg_sbackup_done_title));
                     refreshCardCSub();
+                    // 备份完成：关闭旧抽屉 + 重新打开，原地刷新列表（不再退回主页）
+                    runOnUiThread(new Runnable() { public void run() {
+                        if (saveDrawerDlg != null) { saveDrawerDlg.dismiss(); saveDrawerDlg = null; }
+                        openSaveDrawer();
+                    }});
                 } catch (Exception e) {
                     log(getString(R.string.log_save_fail, e.getMessage()));
                     toast(getString(R.string.dlg_sbackup_fail_title));
