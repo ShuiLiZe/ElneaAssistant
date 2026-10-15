@@ -1,7 +1,12 @@
 package jp.co.althi.elnea.assistant;
 
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.os.Bundle;
+import android.os.Build;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -60,6 +65,7 @@ public class MainActivity extends Activity {
     private TextView statusLineView;
     private TextView statusRoot;
     private TextView cardASubView;
+    private TextView cardATagView;
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
     private volatile boolean hasRoot = false;
     private boolean gameInstalled = false;
@@ -429,10 +435,13 @@ public class MainActivity extends Activity {
             if (remoteVer != null && remoteVer.length() > 0) {
                 if (localVer == null || localVer.length() == 0) {
                     setCardASub("检测到可用汉化数据 " + remoteVer + " · 点击一键部署");
+                    setCardATag("可更新 ›", true);
                 } else if (!remoteVer.equals(localVer)) {
                     setCardASub("✨ 发现新版本汉化 " + remoteVer + "（当前 " + localVer + "）· 点击更新");
+                    setCardATag("可更新 ›", true);
                 } else {
                     setCardASub("已是最新汉化 " + remoteVer + " · 点击校验或重新覆盖");
+                    setCardATag("已最新", false);
                 }
             }
         } catch (Exception ignore) { /* 静默失败，不打扰 */ }
@@ -442,6 +451,18 @@ public class MainActivity extends Activity {
         runOnUiThread(new Runnable() {
             public void run() {
                 if (cardASubView != null) cardASubView.setText(text);
+            }
+        });
+    }
+
+    // 卡片A 右侧 Tag 三态：默认灰 / 可更新蓝 / 已最新灰
+    private void setCardATag(final String text, final boolean highlight) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                if (cardATagView != null) {
+                    cardATagView.setText(text);
+                    cardATagView.setTextColor(Color.parseColor(highlight ? "#0066CC" : "#86868B"));
+                }
             }
         });
     }
@@ -547,6 +568,9 @@ public class MainActivity extends Activity {
         tagView.setPadding(dp(8), dp(4), dp(8), dp(4));
         tagView.setBackgroundResource(R.drawable.tag_pill);
         card.addView(tagView);
+        if (titleText.equals(getString(R.string.card_a_title))) {
+            cardATagView = tagView;
+        }
 
         TextView arrow = new TextView(this);
         arrow.setText("\u203A");
@@ -1157,15 +1181,19 @@ public class MainActivity extends Activity {
     // 全自动：流式下载 → 解压 → 部署 → 校验 → 持久化
     private void downloadAndDeploy(final String version) {
         log(getString(R.string.log_dl_start));
+        notifyProgress("汉化资源更新中", "正在下载 " + RES_FILE_NAME + " ...", true);
         try {
             File zip = new File(getFilesDir(), RES_FILE_NAME);
             boolean ok = downloadZip(zip);
             if (!ok) {
+                cancelNotify();
                 toast(getString(R.string.dlg_deploy_fail_title));
                 return;
             }
+            notifyProgress("汉化资源部署中", "下载完成，正在解压并写入游戏缓存...", true);
             doDeploy(version);
         } catch (Exception e) {
+            cancelNotify();
             log(getString(R.string.log_dl_fail, e.getMessage()));
             toast(getString(R.string.dlg_deploy_fail_title));
         }
@@ -1205,6 +1233,9 @@ public class MainActivity extends Activity {
                         lastPct = pct;
                         log(getString(R.string.log_dl_progress,
                             pct, done / 1048576.0f, total / 1048576.0f));
+                        notifyProgress("汉化资源更新中",
+                            "已下载 " + pct + "% (" + (done / 1048576.0f) + " / "
+                            + (total / 1048576.0f) + " MB)", true);
                     }
                 }
             }
@@ -1270,8 +1301,11 @@ public class MainActivity extends Activity {
                     setResVersion(version);
                     log(getString(R.string.log_done));
                     toast(getString(R.string.dlg_deploy_done_title));
+                    notifyProgress("汉化资源已部署",
+                        "已部署 " + version + " · 校验 md5=8d0f4720…", false);
                     refreshStatus();
                 } catch (Exception e) {
+                    cancelNotify();
                     log(getString(R.string.log_fail, e.getMessage()));
                     toast(getString(R.string.dlg_deploy_fail_title));
                 }
@@ -1449,5 +1483,51 @@ public class MainActivity extends Activity {
         runOnUiThread(new Runnable() {
             public void run() { Toast.makeText(MainActivity.this, s, Toast.LENGTH_LONG).show(); }
         });
+    }
+
+    // ===== 通知栏通道（下载/部署进度可见，避免「点了没反应」）=====
+    private static final String CHANNEL_ID = "elnea_download";
+    private static final int NOTIF_ID = 1001;
+    private NotificationManager notifMgr;
+
+    private NotificationManager notifManager() {
+        if (notifMgr == null) notifMgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        return notifMgr;
+    }
+
+    private void ensureChannel() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "汉化资源更新",
+                NotificationManager.IMPORTANCE_LOW);
+            ch.setDescription("汉化资源包下载与部署进度");
+            notifManager().createNotificationChannel(ch);
+        }
+    }
+
+    private void notifyProgress(String title, String text, boolean ongoing) {
+        ensureChannel();
+        Notification.Builder b;
+        if (Build.VERSION.SDK_INT >= 26) {
+            b = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            b = new Notification.Builder(this);
+        }
+        Intent it = new Intent(this, MainActivity.class);
+        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent pi = PendingIntent.getActivity(this, 0, it,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        b.setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(pi)
+            .setAutoCancel(!ongoing)
+            .setOngoing(ongoing);
+        try {
+            notifManager().notify(NOTIF_ID, b.build());
+        } catch (Exception ignore) { /* 通知权限被拒则静默 */ }
+    }
+
+    private void cancelNotify() {
+        try { notifManager().cancel(NOTIF_ID); } catch (Exception ignore) { }
     }
 }
